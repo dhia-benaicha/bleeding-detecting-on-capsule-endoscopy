@@ -1,0 +1,67 @@
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VSCode settings
+.vscode/
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+ENV/
+*.env
+
+# Data and model outputs
+output/
+data/
+*.h5
+*.pth
+*.pt
+*.ckpt
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Test and coverage outputs
+htmlcov/
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Ignore zipped datasets
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Ignore notebook metadata
+*.nbmetadata
+
+# Ignore experiment tracking
+mlruns/
+wandb/
