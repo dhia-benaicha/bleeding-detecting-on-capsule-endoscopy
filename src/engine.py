@@ -18,11 +18,11 @@ def train_step(
   train_loss, train_acc = 0, 0
 
   for X, y in dataloader:
-    X, y = X.to(device), y.to(device).float().view(-1, 1)
+    X, y = X.to(device), y.to(device).float().unsqueeze(1)
 
-    y_pred = model(X)
+    y_pred_logits = model(X)
 
-    loss = loss_fn(y_pred, y)
+    loss = loss_fn(y_pred_logits, y)
     train_loss += loss.item()
 
     optimizer.zero_grad()
@@ -31,8 +31,8 @@ def train_step(
 
     optimizer.step()
     
-    y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-    train_acc += (y_pred_class == y).sum().item()/len(y_pred) 
+    y_pred_class = (torch.sigmoid(y_pred_logits) > 0.5).long().squeeze(1)
+    train_acc += (y_pred_class == y.long()).sum().item()/len(y_pred_logits)
 
   train_loss /= len(dataloader)
   train_acc /= len(dataloader)
@@ -50,13 +50,15 @@ def test_step(
   
   with torch.inference_mode():
     for X, y in dataloader:
-      X, y = X.to(device), y.to(device).float().view(-1, 1)
-      y_pred = model(X)
-      print(f"y_pred: {y_pred.shape}, y: {y.shape}")
-      loss = loss_fn(y_pred.unsqueeze(dim=1), y)
+      X, y = X.to(device), y.to(device).float().unsqueeze(1)
+
+      y_pred_logits = model(X)
+
+      loss = loss_fn(y_pred_logits, y)
       test_loss += loss.item()
-      test_pred_labels = y_pred.argmax(dim=1)
-      test_acc += ((test_pred_labels == y).sum().item()/len(test_pred_labels))
+
+      y_pred_class = (torch.sigmoid(y_pred_logits) > 0.5).long().squeeze(1)
+      test_acc += (y_pred_class == y.long()).sum().item()/len(y_pred_logits)
 
   test_loss /= len(dataloader)
   test_acc /= len(dataloader)
@@ -100,12 +102,12 @@ def train(
     # save best model
     if save_best and test_acc > best_acc:
       best_acc = test_acc
-      save_load.save_model(
-        model=model,
-        optimizer=optimizer,
-        model_name=f"{model_name}.pth",
-        target_dir=save_dir
-      )
+      save_load.save_model(model=model,
+                           optimizer=optimizer,
+                           model_name=f"{model_name}.pth",
+                           target_dir=save_dir,
+                           epoch= epoch,
+                           val_acc= best_acc)
 
   save_load.save_results_to_csv(
   results=results,
