@@ -4,7 +4,7 @@ Contains functions for training and testing a PyTorch model (binary classificati
 import torch
 from tqdm.auto import tqdm
 from typing import Dict, List, Tuple, Optional
-from utils import save_load  # Assumes save_checkpoint function exists
+from utils import save_load
 
 def train_step(
   model: torch.nn.Module, 

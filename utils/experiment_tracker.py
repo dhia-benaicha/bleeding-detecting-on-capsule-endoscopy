@@ -1,55 +1,54 @@
-import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
 import os
-import pandas as pd
-from typing import List, Dict, Optional
 
-def compare_models(
-    results: Optional[List[Dict]] = None,
-    csv_dir: Optional[str] = None,
-    model_names: Optional[List[str]] = None
-):
+def log_results_tensorboard(results: dict, model_name: str, log_dir: str = "runs", start_epoch: int = 0):
     """
-    Compare models' training and testing results.
-    Provide either a list of results dicts or a directory with CSV files.
+    Logs training and testing metrics to TensorBoard for a single model.
+
+    Args:
+        results (dict): Dictionary containing metric lists. 
+            Expected keys: 'train_loss', 'test_loss', 'train_acc', 'test_acc'.
+            Each value should be a list of metric values per epoch.
+        model_name (str): Name of the model. Used as a subdirectory in log_dir.
+        log_dir (str, optional): Parent directory for TensorBoard logs. Defaults to "runs".
+        start_epoch (int, optional): Starting epoch number for logging. Defaults to 0.
+
+    Example:
+        results = {
+            "train_loss": [0.5, 0.4],
+            "test_loss": [0.6, 0.5],
+            "train_acc": [0.8, 0.85],
+            "test_acc": [0.75, 0.8]
+        }
+        log_results_tensorboard(results, "my_model")
+
+    If you previously trained for 10 epochs, and now train for 5 more, call:
+        log_results_tensorboard(results, "my_model", start_epoch=10)
     """
-    if results is None and csv_dir is None:
-        print("Provide either 'results' or 'csv_dir'.")
-        return
+    writer = SummaryWriter(log_dir=os.path.join(log_dir, model_name))
+    num_epochs = len(results["train_loss"])
+    for i, epoch in enumerate(range(start_epoch, start_epoch + num_epochs)):
+        writer.add_scalar("Loss/Train", results["train_loss"][i], epoch)
+        writer.add_scalar("Loss/Test", results["test_loss"][i], epoch)
+        writer.add_scalar("Accuracy/Train", results["train_acc"][i], epoch)
+        writer.add_scalar("Accuracy/Test", results["test_acc"][i], epoch)
+    writer.close()
+    print(f"[INFO] TensorBoard logs updated for {model_name} in {os.path.join(log_dir, model_name)}")
 
-    if csv_dir:
-        csv_files = [f for f in os.listdir(csv_dir) if f.endswith('.csv')]
-        if not csv_files:
-            print(f"No CSV files in {csv_dir}")
-            return
-        results = []
-        for f in csv_files:
-            df = pd.read_csv(os.path.join(csv_dir, f))
-            results.append({col: df[col].tolist() for col in df.columns})
-        if model_names is None:
-            model_names = [os.path.splitext(f)[0] for f in csv_files]
-    else:
-        if not results:
-            print("No results to compare.")
-            return
-        if model_names is None:
-            model_names = [f"Model {i+1}" for i in range(len(results))]
+def log_multiple_models_tensorboard(results_list: list, model_names: list, log_dir: str = "runs"):
+    """
+    Logs metrics for multiple models to TensorBoard.
 
-    metrics = [
-        ("train_loss", "Train Loss"),
-        ("train_acc", "Train Accuracy"),
-        ("test_loss", "Test Loss"),
-        ("test_acc", "Test Accuracy"),
-    ]
+    Args:
+        results_list (list): List of results dictionaries, one per model.
+            Each dictionary should have the same structure as described in log_results_tensorboard.
+        model_names (list): List of model names corresponding to each results dictionary.
+        log_dir (str, optional): Parent directory for TensorBoard logs. Defaults to "runs".
 
-    plt.figure(figsize=(12, 8))
-    for idx, (key, ylabel) in enumerate(metrics, 1):
-        plt.subplot(2, 2, idx)
-        for i, res in enumerate(results):
-            if key in res:
-                plt.plot(res[key], label=model_names[i])
-        plt.xlabel('Epoch')
-        plt.ylabel(ylabel)
-        plt.legend()
-        plt.grid(True, linestyle='--', alpha=0.5)
-    plt.tight_layout()
-    plt.show()
+    Example:
+        results_list = [results_model1, results_model2]
+        model_names = ["model1", "model2"]
+        log_multiple_models_tensorboard(results_list, model_names)
+    """
+    for results, name in zip(results_list, model_names):
+        log_results_tensorboard(results, name, log_dir)
