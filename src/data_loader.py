@@ -1,125 +1,120 @@
-"""
-Contains functionality for creating PyTorch DataLoaders for 
-image classification data.
-"""
 import os
-
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import DataLoader, random_split, Dataset
 
-NUM_WORKERS = os.cpu_count()
+class ImageDataLoader(Dataset):
+  def __init__(
+    self,
+    data_dir,
+    image_size=(224, 224),
+    grayscale=False,
+    center_crop=None,
+    additional_transforms=None,
+    batch_size=32,
+    num_workers=None,
+    pin_memory=False,
+    shuffle_train=True,
+    test_split=0.2,
+    invert_classes=False,
+  ):
+    self.data_dir = data_dir
+    self.batch_size = batch_size
+    self.num_workers = num_workers if num_workers is not None else os.cpu_count()
+    self.pin_memory = pin_memory
+    self.shuffle_train = shuffle_train
+    self.test_split = test_split
+    self.image_size = image_size
+    self.grayscale = grayscale
+    self.center_crop = center_crop
+    self.additional_transforms = additional_transforms
+    self.invert_classes = invert_classes
 
-def get_data_transforms(
-  image_size=(224, 224), 
-  augment=True, 
-  grayscale=False, 
-  center_crop=None, 
-  additional_transforms=None
-):
-  """
-  Create train and test transforms with optional grayscale, center crop, and extra transforms.
-  Args:
-    image_size: Tuple of (height, width) for resizing images.
-    augment: Boolean indicating whether to apply data augmentation.
-    grayscale: Boolean to convert images to grayscale.
-    center_crop: Optional int or tuple for center cropping.
-    additional_transforms: Optional list of extra transforms to append.
-  Returns:
-    train_transform: Transformations for training data.
-    test_transform: Transformations for testing data.
-  """
-  base_transforms = []
-  if grayscale:
-    base_transforms.append(transforms.Grayscale(num_output_channels=3))
-  if center_crop:
-    base_transforms.append(transforms.CenterCrop(center_crop))
-  base_transforms.append(transforms.Resize(image_size))
+    self.train_transform = self.get_data_transforms(augment=False)
+    self.test_transform = self.get_data_transforms(augment=False)
 
-  normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                   std=[0.229, 0.224, 0.225])
+    self.train_loader, self.test_loader, self.class_names = self.create_dataloaders()
 
-  if augment:
-    train_transform = transforms.Compose(
-      base_transforms +
-      [
+  def get_data_transforms(self, augment=False):
+    
+    base_transforms = []
+
+    if self.grayscale:
+      base_transforms.append(transforms.Grayscale(num_output_channels=3))
+    if self.center_crop:
+      base_transforms.append(transforms.CenterCrop(self.center_crop))
+    
+    base_transforms.append(transforms.Resize(self.image_size))
+
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                     std=[0.229, 0.224, 0.225])
+
+    aug_transforms = []
+    if augment:
+      aug_transforms = [
         transforms.RandomHorizontalFlip(0.5),
         transforms.RandomRotation(10),
         transforms.ColorJitter(brightness=0.2, contrast=0.2),
-      ] +
-      (additional_transforms if additional_transforms else []) +
-      [
-        transforms.ToTensor(),
-        normalize
       ]
-    )
-  else:
-    train_transform = transforms.Compose(
+
+    transform = transforms.Compose(
       base_transforms +
-      (additional_transforms if additional_transforms else []) +
+      aug_transforms +
+      (self.additional_transforms if self.additional_transforms else []) +
       [
         transforms.ToTensor(),
         normalize
       ]
     )
+    return transform
 
-  test_transform = transforms.Compose(
-    base_transforms +
-    (additional_transforms if additional_transforms else []) +
-    [
-      transforms.ToTensor(),
-      normalize
-    ]
-  )
+  def create_dataloaders(self):
+    full_data = datasets.ImageFolder(self.data_dir, transform=None)
+    class_names = full_data.classes
 
-  return train_transform, test_transform
+    # Invert class_to_idx if requested
+    if self.invert_classes:
+      # Reverse the order of class names and reassign indices
+      class_names = list(reversed(class_names))
+      full_data.class_to_idx = {cls: i for i, cls in enumerate(class_names)}
+      # Also update samples with new indices
+      full_data.samples = [
+        (path, full_data.class_to_idx[cls])
+        for (path, _), cls in zip(full_data.samples, [os.path.basename(os.path.dirname(p)) for p, _ in full_data.samples])
+      ]
+      full_data.targets = [label for _, label in full_data.samples]
 
+    total_size = len(full_data)
+    test_size = int(self.test_split * total_size)
+    train_size = total_size - test_size
+    train_subset, test_subset = random_split(full_data, [train_size, test_size])
 
-def create_dataloaders(
-  data_dir,
-  train_transform,
-  test_transform,
-  batch_size=32,
-  num_workers=NUM_WORKERS,
-  shuffle_train=True,
-):
-  """
-  Create DataLoaders for training and testing datasets from a single directory.
-  Args:
-    train_dir: Directory with images (should contain 'bleeding' and 'healthy' subfolders).
-    train_transform: Transformations for training data.
-    test_transform: Transformations for testing data.
-    batch_size: Batch size for DataLoaders.
-    num_workers: Number of workers for DataLoader.
-    shuffle_train: Whether to shuffle training data.
+    train_subset.dataset.transform = self.train_transform
+    test_subset.dataset.transform = self.test_transform
 
-  Returns:
-    train_loader, test_loader, class_names
-  """
+    train_loader = DataLoader(
+      train_subset,
+      batch_size=self.batch_size,
+      shuffle=self.shuffle_train,
+      num_workers=self.num_workers,
+      pin_memory=self.pin_memory
+    )
+    test_loader = DataLoader(
+      test_subset,
+      batch_size=self.batch_size,
+      shuffle=False,
+      num_workers=self.num_workers,
+      pin_memory=self.pin_memory
+    )
+    return train_loader, test_loader, class_names
 
-  full_data = datasets.ImageFolder(data_dir, transform=None)
-  class_names = full_data.classes
+  def apply_augmentation(self):
+    self.train_transform = self.get_data_transforms(augment=True)
+    self.train_loader.dataset.dataset.transform = self.train_transform
 
-  # Split into train/test (80/20 split)
-  total_size = len(full_data)
-  test_size = int(0.2 * total_size)
-  train_size = total_size - test_size
-  train_subset, test_subset = random_split(full_data, [train_size, test_size])
+  def __len__(self):
+    full_data = datasets.ImageFolder(self.data_dir, transform=None)
+    return len(full_data)
 
-  # Apply transforms
-  train_subset.dataset.transform = train_transform
-  test_subset.dataset.transform = test_transform
-
-  train_loader = DataLoader(
-    train_subset,
-    batch_size=batch_size,
-    shuffle=shuffle_train,
-    num_workers=num_workers,
-  )
-  test_loader = DataLoader(
-    test_subset,
-    batch_size=batch_size,
-    shuffle=False,
-    num_workers=num_workers,
-  )
-  return train_loader, test_loader, class_names
+  def __getitem__(self, idx):
+    full_data = datasets.ImageFolder(self.data_dir, transform=self.test_transform)
+    return full_data[idx]
