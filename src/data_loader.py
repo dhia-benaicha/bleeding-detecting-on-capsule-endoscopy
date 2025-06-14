@@ -32,7 +32,7 @@ class ImageDataLoader(Dataset):
     self.train_transform = self.get_data_transforms(augment=False)
     self.test_transform = self.get_data_transforms(augment=False)
 
-    self.train_loader, self.test_loader, self.class_names = self.create_dataloaders()
+    self.train_loader, self.test_loader, self.class_names, self.class_to_idx = self.create_dataloaders()
 
   def get_data_transforms(self, augment=False):
     
@@ -70,6 +70,7 @@ class ImageDataLoader(Dataset):
   def create_dataloaders(self):
     full_data = datasets.ImageFolder(self.data_dir, transform=None)
     class_names = full_data.classes
+    class_to_idx = full_data.class_to_idx.copy()
 
     # Invert class_to_idx if requested
     if self.invert_classes:
@@ -81,7 +82,8 @@ class ImageDataLoader(Dataset):
         (path, full_data.class_to_idx[cls])
         for (path, _), cls in zip(full_data.samples, [os.path.basename(os.path.dirname(p)) for p, _ in full_data.samples])
       ]
-      full_data.targets = [label for _, label in full_data.samples]
+      full_data.targets = [s[1] for s in full_data.samples]
+      class_to_idx = full_data.class_to_idx.copy()
 
     total_size = len(full_data)
     test_size = int(self.test_split * total_size)
@@ -105,7 +107,7 @@ class ImageDataLoader(Dataset):
       num_workers=self.num_workers,
       pin_memory=self.pin_memory
     )
-    return train_loader, test_loader, class_names
+    return train_loader, test_loader, class_names, class_to_idx
 
   def apply_augmentation(self):
     self.train_transform = self.get_data_transforms(augment=True)
